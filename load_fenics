@@ -1,0 +1,6 @@
+#!/bin/bash
+module purge
+module load c7
+module load gcc/4.9
+module load fenics-m/1.6
+module load fenics-icesextras/2016.6
