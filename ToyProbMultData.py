@@ -1,25 +1,43 @@
 from fenics import *
 import numpy as np
+parameters['plotting_backend'] == 'matplotlib'
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import axes3d
  
-cells_per_side = 64
+def structured_mesh(u, divisions):
+    """
+    Represent u on a structured mesh.
+    """
+    # u must have P1 elements, otherwise interpolate to P1 elements
+    u2 = u if u.ufl_element().degree() == 1 else interpolate(u, FunctionSpace(mesh, 'P', 1))
+    mesh = u.function_space().mesh()
+    from BoxField import fenics_function2BoxField
+    u_box = fenics_function2BoxField(u2, mesh, divisions, uniform_mesh=True)
+    return u_box
+
+cells_per_side = 128
 mesh = UnitSquareMesh(cells_per_side,cells_per_side)
 V = FunctionSpace(mesh, 'P', 1)
  
-u_D_0 = Expression('x[0] == 0 && x[1] <= 1 ? 1 : 0.00001')
-u_D_1 = Expression('x[0] == 0 && x[1] <= 1 ? sin(10*x[1]/pi) : 0.00001')
-u_D_2 = Expression('x[0] == 1 && x[1] <= 1 ? 1 : 0.00001')
-u_D_3 = Expression('x[1] == 0 && x[0] <= 1 ? 1 : 0.00001')
-u_D_4 = Expression('x[1] == 1 && x[0] <= 1 ? 1 : 0.00001')
-u_D_5 = Expression('x[0] == 1 && x[1] <= 1 ? 3 : 1.00001')
-u_D_6 = Expression('x[1] == 0 && x[0] <= 1 ? 2 : 0.50001')
-u_D_7 = Expression('x[1] == 1 && x[0] <= 1 ? 1 : 0.20001')
+P1 = FiniteElement("Lagrange", triangle, 1)
+u_D_0 = Expression('x[0] == 0 && x[1] <= 1 ? 1 : 0.00001', degree=0)
+u_D_1 = Expression('x[0] == 0 && x[1] <= 1 ? sin(10*x[1]/pi) : 0.00001', element=P1)
+u_D_2 = Expression('x[0] == 1 && x[1] <= 1 ? 1 : 0.00001', degree=0)
+u_D_3 = Expression('x[1] == 0 && x[0] <= 1 ? 1 : 0.00001', degree=0)
+u_D_4 = Expression('x[1] == 1 && x[0] <= 1 ? 1 : 0.00001', degree=0)
+u_D_5 = Expression('x[0] == 1 && x[1] <= 1 ? 3 : 1.00001', degree=0)
+u_D_6 = Expression('x[1] == 0 && x[0] <= 1 ? 2 : 0.50001', degree=0)
+u_D_7 = Expression('x[1] == 1 && x[0] <= 1 ? 1 : 0.20001', degree=0)
 u_Ds = [u_D_0, u_D_1, u_D_2, u_D_3, u_D_4, u_D_5, u_D_6, u_D_7]
  
 def boundary(x, on_boundary):
     return on_boundary
  
 gamma = Constant(0.02)
-sigma = Expression('x[0] >= 0.5 && x[0] <= 0.7 && x[1] >= 0.5 && x[1] <= 0.7 ? 0.2 : 0.1')
+sigma = Expression('x[0] >= 0.5 && x[0] <= 0.7 && x[1] >= 0.5 && x[1] <= 0.7 ? 0.2 : 0.1', degree=0)
 sigma_stars = []
 
 for u_D in u_Ds:
@@ -54,13 +72,26 @@ for u_D in u_Ds:
     solve(a==L, u_star, bc)
 
     sigma_star = H_star/u_star
-    sigma_stars.append(sigma_star)
+    sigma_stars.append(project(sigma_star, V))
 
 sigma_star_avg = Constant(0)
 for sigma_star in sigma_stars:
     sigma_star_avg = sigma_star + sigma_star_avg
 
 sigma_star_avg = sigma_star_avg / len(sigma_stars)
-plot(sigma_star_avg)
-plot(sigma_stars[0])
+sigma_star_avg = project(sigma_star_avg, V)
+
+# Plotting of sigma*
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+
+sigma_star_box = structured_mesh(sigma_star_avg, (cells_per_side, cells_per_side))
+sigma_star_ = sigma_star_box.values
+cv = sigma_star_box.grid.coorv
+
+ax.plot_surface(cv[0], cv[1], sigma_star_, cmap=cm.coolwarm, rstride=1, cstride=1)
+
+plt.show()
+# plot(sigma_star_avg)
+# plot(sigma_stars[0])
 interactive()
