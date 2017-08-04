@@ -1,10 +1,27 @@
 from fenics import *
+parameters['plotting_backend'] == 'matplotlib'
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import matplotlib.cm as cm
+from mpl_toolkits.mplot3d import axes3d
+
+def structured_mesh(u, divisions):
+    """
+    Represent u on a structured mesh.
+    """
+    # u must have P1 elements, otherwise interpolate to P1 elements
+    u2 = u if u.ufl_element().degree() == 1 else interpolate(u, FunctionSpace(mesh, 'P', 1))
+    mesh = u.function_space().mesh()
+    from BoxField import fenics_function2BoxField
+    u_box = fenics_function2BoxField(u2, mesh, divisions, uniform_mesh=True)
+    return u_box
  
-cells_per_side = 32
+cells_per_side = 128
 mesh = UnitSquareMesh(cells_per_side,cells_per_side)
 V = FunctionSpace(mesh, 'P', 1)
  
-u_D = Expression('x[0] == 0 && x[1] <= 1 ? 1 : 0.00001')
+u_D = Expression('x[0] == 0 && x[1] <= 1 ? 1 : 0.00001', degree=0)
  
 def boundary(x, on_boundary):
     return on_boundary
@@ -12,7 +29,7 @@ def boundary(x, on_boundary):
 bc = DirichletBC(V, u_D, boundary)
  
 gamma = Constant(0.02)
-sigma = Expression('x[0] >= 0.5 && x[0] <= 0.7 && x[1] >= 0.5 && x[1] <= 0.7 ? 0.2 : 0.1')
+sigma = Expression('x[0] >= 0.5 && x[0] <= 0.7 && x[1] >= 0.5 && x[1] <= 0.7 ? 0.2 : 0.1', degree=0)
 u = TrialFunction(V)
 v = TestFunction(V)
 a = (gamma*dot(grad(u), grad(v)) + sigma*u*v)*dx
@@ -21,10 +38,6 @@ L = f*v*dx
  
 u = Function(V)
 solve(a==L, u, bc)
-# Plot solution and mesh
- 
-plot(u)
-plot(mesh)
  
 # Save solution to file in VTK format
 vtkfile = File('DiffusionEqFEniCS.pvd')
@@ -44,7 +57,6 @@ print('error_L2  =', error_L2)
 print('error_max =', error_max)
 
 H = sigma * u
-plot(H)
 
 rand_max = 0.05
 rand_min = -0.05
@@ -60,9 +72,20 @@ L = f*v*dx
 u_star = Function(V)
 solve(a==L, u_star, bc)
 
-#  sigma_star = H_star/u_star
-#  plot(sigma_star)
-sigma_star = H_star/u_star
-plot(sigma_star)
+sigma_star_f = H_star/u_star
+sigma_star = project(sigma_star_f, V)
+
+
+# Plotting of sigma*
+fig = plt.figure()
+ax = fig.gca(projection='3d')
+
+sigma_star_box = structured_mesh(sigma_star, (cells_per_side, cells_per_side))
+sigma_star_ = sigma_star_box.values
+cv = sigma_star_box.grid.coorv
+
+ax.plot_surface(cv[0], cv[1], sigma_star_, cmap=cm.coolwarm, rstride=1, cstride=1)
+
+plt.show()
 
 interactive()
