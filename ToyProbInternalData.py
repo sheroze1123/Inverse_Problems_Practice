@@ -36,8 +36,8 @@ u_Ds = [u_D_0, u_D_1, u_D_2, u_D_3, u_D_4, u_D_5, u_D_6, u_D_7]
 def boundary(x, on_boundary):
     return on_boundary
  
-gamma = Constant(0.02)
-sigma = Expression('x[0] >= 0.5 && x[0] <= 0.7 && x[1] >= 0.5 && x[1] <= 0.7 ? 0.2 : 0.1', degree=0)
+gamma = Expression('x[0] >= 0.4 && x[0] <= 0.6 && x[1] >= 0.4 && x[1] <= 0.6 ? 0.03 : 0.01', degree=0)
+sigma = Expression('x[0] >= 0.2 && x[0] <= 0.8 && x[1] >= 0.2 && x[1] <= 0.3 ? 0.2 : 0.1', degree=0)
 # sigma = Expression('exp(-0.5 * (pow((x[0] - 0.6)/0.2, 2) + pow((x[1] - 0.7)/0.2, 2)))', degree=1)
 sigma_stars = []
 
@@ -61,13 +61,9 @@ for u_D in u_Ds:
     rand_max = 0.05
     rand_min = -0.05
     rand_field = Function(V)
-    rand_field_data = (np.random.rand(V.dim()) * 0.01) - 0.005
+    rand_field_data = (np.random.rand(V.dim()) * 0.1) - 0.05
     rand_field.vector().set_local(rand_field_data)
-
-    # Used as datum
     H_star = H * (1 + rand_field)
-
-    # Reconstruction
 
     u_star = TrialFunction(V)
     a_star = (gamma*dot(grad(u_star), grad(v)) + H_star)*dx
