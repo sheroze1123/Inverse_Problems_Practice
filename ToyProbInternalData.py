@@ -6,6 +6,8 @@ matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.cm as cm
 from mpl_toolkits.mplot3d import axes3d
+
+set_log_level(40)
  
 def structured_mesh(u, divisions):
     """
@@ -85,12 +87,13 @@ iterations = 0
 
 # Random initialization of gamma and sigma reconstructions
 gamma_recons = Function(V)
-gamma_recons.vector().set_local(np.random.rand(V.dim()))
+gamma_recons = project(gamma, V)
+# gamma_recons.vector().set_local(np.random.rand(V.dim())*0.1)
 sigma_recons = Function(V)
 sigma_recons.vector().set_local(np.random.rand(V.dim()))
 
-gamma_learn_rate = 0.12
-sigma_learn_rate = 0.12
+gamma_learn_rate = 0.00000005
+sigma_learn_rate = 0.1
 
 # Run until desired convergence is obtained or until max iterations
 while not (converged or iterations == maxiter):
@@ -126,26 +129,44 @@ while not (converged or iterations == maxiter):
         w_js.append(w_j)
 
         # TODO: Add regularization here
-        dPhi_dGamma = dPhi_dGamma + div(grad(u_j))*w_j
+        g = grad(u_j)
+        dPhi_dGamma = dPhi_dGamma + (g[0] + g[1]) * w_j
+        # sum_mag = np.sum(np.abs(project(dPhi_dGamma, V).vector().array()))
+        # print ("dPhi_dGamma magnitude (L1): {:4.2f}".format(sum_mag))
         dPhi_dSigma = dPhi_dSigma + ((sigma_recons * u_j - H_stars[j])*u_j - w_j*u_j)
 
+    # print ("Gradients calculated. Iteration: {:d}".format(iterations))
     gamma_recons = gamma_recons - dPhi_dGamma * gamma_learn_rate
     sigma_recons = sigma_recons - dPhi_dSigma * sigma_learn_rate
+
+    sigma_recons = project(sigma_recons, V)
+    gamma_recons = project(gamma_recons, V)
+
 
     sigma_error = np.abs(np.sum(project(sigma_recons - sigma, V).vector().array()))
     gamma_error = np.abs(np.sum(project(gamma_recons - gamma, V).vector().array()))
 
-    print ('Sigma error: {:4.2f}, Gamma error: {:4.2f}'.format(sigma_error, gamma_error))
-    if sigma_error < 3:
+    print ('Sigma error: {:4.2f}, Gamma error: {:4.2f}, Iteration: {:d}'.format(sigma_error, gamma_error, iterations))
+    if gamma_error < 40:
+        gamma_learn_rate /= 2
+
+    if sigma_error < 23:
+        sigma_learn_rate = 0.1
+        gamma_learn_rate /= 2
+
+    if sigma_error < 2.2:
+        sigma_learn_rate = 0.04
+        gamma_learn_rate /= 2
+
+    if sigma_error < 0.1:
+        sigma_learn_rate = 0.02
+
+    if sigma_error < 0.01:
         converged = True
-
-
 
 # Plotting of sigma_recons
 fig = plt.figure()
 ax = fig.gca(projection='3d')
-
-
 
 sigma_box = structured_mesh(project(sigma_recons, V), (cells_per_side, cells_per_side))
 sigma_ = sigma_box.values
