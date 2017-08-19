@@ -14,15 +14,27 @@ def structured_mesh(u, divisions):
     Represent u on a structured mesh.
     """
     # u must have P1 elements, otherwise interpolate to P1 elements
-    u2 = u if u.ufl_element().degree() == 1 else interpolate(u, FunctionSpace(mesh, 'P', 1))
     mesh = u.function_space().mesh()
+    u2 = u if u.ufl_element().degree() == 1 else interpolate(u, FunctionSpace(mesh, 'P', 1))
     from BoxField import fenics_function2BoxField
     u_box = fenics_function2BoxField(u2, mesh, divisions, uniform_mesh=True)
     return u_box
 
 cells_per_side = 32
 mesh = UnitSquareMesh(cells_per_side,cells_per_side)
-V = FunctionSpace(mesh, 'P', 1)
+V = FunctionSpace(mesh, 'P', 2)
+
+def plot_func(func):
+    fig = plt.figure()
+    ax = fig.gca(projection='3d')
+
+    func_box = structured_mesh(project(func, V), (cells_per_side, cells_per_side))
+    func_ = func_box.values
+    cv = func_box.grid.coorv
+
+    ax.plot_surface(cv[0], cv[1], func_, cmap=cm.coolwarm, rstride=1, cstride=1)
+
+    plt.show()
  
 P1 = FiniteElement("Lagrange", triangle, 1)
 u_D_0 = Expression('x[0] == 0 && x[1] <= 1 ? 1 : 0.00001', degree=0)
@@ -87,13 +99,19 @@ iterations = 0
 
 # Random initialization of gamma and sigma reconstructions
 gamma_recons = Function(V)
-gamma_recons = project(gamma, V)
+# gamma_recons = project(gamma, V)
+rand_field_data = np.random.rand(V.dim()) * 0.001
+rand_field = Function(V)
+rand_field.vector().set_local(rand_field_data)
+gamma_recons = interpolate(gamma, V) + rand_field 
 # gamma_recons.vector().set_local(np.random.rand(V.dim())*0.1)
-sigma_recons = Function(V)
-sigma_recons.vector().set_local(np.random.rand(V.dim()))
 
-gamma_learn_rate = 0.00000005
-sigma_learn_rate = 0.1
+sigma_recons = Function(V)
+sigma_recons = interpolate(sigma, V) + rand_field
+# sigma_recons.vector().set_local(np.random.rand(V.dim()))
+
+gamma_learn_rate = 0.01
+sigma_learn_rate = 0.2
 
 # Run until desired convergence is obtained or until max iterations
 while not (converged or iterations == maxiter):
@@ -129,8 +147,8 @@ while not (converged or iterations == maxiter):
         w_js.append(w_j)
 
         # TODO: Add regularization here
-        g = grad(u_j)
-        dPhi_dGamma = dPhi_dGamma + (g[0] + g[1]) * w_j
+        luj = project(div(grad(u_j)), V)
+        dPhi_dGamma = dPhi_dGamma + luj * w_j  #TODO: Check this math
         # sum_mag = np.sum(np.abs(project(dPhi_dGamma, V).vector().array()))
         # print ("dPhi_dGamma magnitude (L1): {:4.2f}".format(sum_mag))
         dPhi_dSigma = dPhi_dSigma + ((sigma_recons * u_j - H_stars[j])*u_j - w_j*u_j)
@@ -142,39 +160,18 @@ while not (converged or iterations == maxiter):
     sigma_recons = project(sigma_recons, V)
     gamma_recons = project(gamma_recons, V)
 
-
     sigma_error = np.abs(np.sum(project(sigma_recons - sigma, V).vector().array()))
     gamma_error = np.abs(np.sum(project(gamma_recons - gamma, V).vector().array()))
 
     print ('Sigma error: {:4.2f}, Gamma error: {:4.2f}, Iteration: {:d}'.format(sigma_error, gamma_error, iterations))
-    if gamma_error < 40:
-        gamma_learn_rate /= 2
 
-    if sigma_error < 23:
-        sigma_learn_rate = 0.1
-        gamma_learn_rate /= 2
-
-    if sigma_error < 2.2:
-        sigma_learn_rate = 0.04
-        gamma_learn_rate /= 2
+    # Very hacky adaptive gradients. Need to change the optimizer anyway
+    if gamma_error < 0.5:
+        gamma_learn_rate = 0.002
 
     if sigma_error < 0.1:
-        sigma_learn_rate = 0.02
-
-    if sigma_error < 0.01:
         converged = True
 
-# Plotting of sigma_recons
-fig = plt.figure()
-ax = fig.gca(projection='3d')
-
-sigma_box = structured_mesh(project(sigma_recons, V), (cells_per_side, cells_per_side))
-sigma_ = sigma_box.values
-cv = sigma_box.grid.coorv
-
-ax.plot_surface(cv[0], cv[1], sigma_, cmap=cm.coolwarm, rstride=1, cstride=1)
-
-plt.show()
-# plot(sigma_star_avg)
-# plot(sigma_stars[0])
+plot_func(gamma_recons)
+plot_func(sigma_recons)
 interactive()
